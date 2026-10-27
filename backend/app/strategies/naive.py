@@ -15,18 +15,19 @@ The endpoint records into `naive_bookings`, which has NO unique constraint,
 so tests/test_naive.py can count the duplicate bookings it produces.
 """
 from sqlalchemy import insert, update
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.models import SEAT_BOOKED, NaiveBooking, Seat
-from app.strategies.common import BookingRequest, BookingResult, booking_rows, check_seats, select_seats
+from app.strategies.common import (
+    BookingRequest, BookingResult, StrategyDeps, booking_rows, check_seats, select_seats,
+)
 
 NAME = "naive"
 
 
-async def book(session_factory: async_sessionmaker, request: BookingRequest, ledger=NaiveBooking) -> BookingResult:
+async def book(deps: StrategyDeps, request: BookingRequest, ledger=NaiveBooking) -> BookingResult:
     """`ledger` lets a test run this same broken logic against the real
     bookings table, to show the unique constraint catching what it misses."""
-    async with session_factory() as session:
+    async with deps.session_factory() as session:
         # Step 1: CHECK. A plain SELECT takes no lock at all.
         seats = (await session.scalars(select_seats(request))).all()
         check_seats(request, seats)

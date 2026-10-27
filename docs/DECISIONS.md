@@ -28,6 +28,27 @@ Every important choice in SeatSentinel, the alternatives, and why.
 ### Warm the connection pool before racing
 - With a cold pool, most of the 200 requests spend their time opening connections and reach Postgres one after another, so the race barely shows (3 winners). After warming the pool, 20 of 200 users get the seat on every run (one per pooled connection), which is what a long-running server would see. Real traffic would be worse, not better.
 
+## Correct strategies (shared rules)
+
+- **One module per strategy** (`app/strategies/`), same signature `book(deps, request)`, selected by the `strategy` field of `POST /book`. Default is `pessimistic`.
+- **Losers get 409 with a reason**, never a 500: "already booked", "seat is busy", or "gave up after N attempts". The concurrency tests assert `{201: 1, 409: 199}` exactly, so any 500 fails them.
+- **Seat ids are sorted and de-duplicated** before any locking, so every request locks in the same global order and overlapping multi-seat bookings cannot deadlock. Tested with half the users asking for `[1,2,3]` and half for `[3,2,1]`.
+- **Every strategy still catches `IntegrityError`** from the unique constraint and turns it into a clean 409.
+
+## Pessimistic locking
+
+- `SELECT ... FOR UPDATE` on the requested seats, then check, update and insert in the same transaction.
+- **Why it is correct under READ COMMITTED:** when a waiting transaction finally gets the row lock, Postgres re-reads the latest committed version of that row before continuing, so it sees `booked`.
+- **`SET LOCAL lock_timeout` (5 s):** without it, a stuck transaction holding a lock would make every waiter hang until the HTTP client gives up. With it, waiters get "seat is busy, please try again". Tested by holding a row lock from a second connection.
+- **Alternative considered:** `FOR UPDATE NOWAIT` / `SKIP LOCKED`. NOWAIT fails instantly instead of queuing (good for "pick any seat" flows, harsher for users). SKIP LOCKED suits job queues, not "I want this specific seat".
+
+## Optimistic locking
+
+- Read without locks, then `UPDATE ... WHERE id = :id AND version = :read_version AND status = 'available'`. `rowcount == 0` means we lost.
+- **Retry policy:** up to `OPTIMISTIC_MAX_RETRIES` (5) re-tries with a small random backoff that grows per attempt, so losers do not collide again in lock-step. If the re-read shows the seat is booked, we stop at once: retrying cannot help.
+- **Honest note:** in this schema, a version change almost always means "someone booked it", so most conflicts end after one re-read with "already booked". Retries pay off when rows change for other reasons (a price edit, a cancellation). The tests simulate that by bumping the version between read and write.
+- **Why `status = 'available'` is also in the WHERE:** belt and braces; even if versions were mishandled, an UPDATE can never flip a booked seat.
+
 ## Auth
 
 - **bcrypt (cost 12) run in a thread:** bcrypt is CPU-heavy on purpose; `asyncio.to_thread` keeps the event loop responsive. Tests use cost 4 and create users directly in SQL, because 200 signups at cost 12 would take about a minute.

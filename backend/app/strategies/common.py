@@ -2,10 +2,21 @@
 import uuid
 from dataclasses import dataclass, field
 
+from redis.asyncio import Redis
 from sqlalchemy import insert, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import Settings
 from app.models import SEAT_AVAILABLE, SEAT_BOOKED, Booking, Seat
+
+
+@dataclass
+class StrategyDeps:
+    """What a strategy needs from the app. Passed in so tests can build it."""
+
+    session_factory: async_sessionmaker
+    redis: Redis
+    settings: Settings
 
 
 @dataclass

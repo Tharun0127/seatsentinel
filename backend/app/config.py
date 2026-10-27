@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     # Seat holds live in Redis and expire on their own (spec: 5 minutes).
     hold_ttl_seconds: int = 300
 
+    # Pessimistic locking: give up (409) instead of waiting forever on a row lock.
+    pessimistic_lock_timeout_ms: int = 5000
     # Optimistic locking: how many times to re-read and retry after a version
     # conflict before giving up with a clean 409.
     optimistic_max_retries: int = 5

@@ -9,7 +9,7 @@ from app.strategies import naive
 from app.strategies.common import BookingRequest, SeatUnavailable
 from sqlalchemy.exc import IntegrityError
 from tests.concurrency import race_for_seat
-from tests.conftest import EVENT_ID, HOT_SEAT_ID
+from tests.conftest import EVENT_ID, HOT_SEAT_ID, deps_for
 
 
 async def test_naive_lets_many_users_book_the_same_seat(client, make_users, db):
@@ -47,11 +47,11 @@ async def test_unique_constraint_catches_what_the_naive_logic_misses(client, mak
     rejects every duplicate: defence in depth.
     """
     await make_users(50)
-    session_factory = client._transport.app.state.session_factory  # the app under test
+    deps = deps_for(client)
     requests = [BookingRequest(user_id=uid, event_id=EVENT_ID, seat_ids=[HOT_SEAT_ID]) for uid in range(1, 51)]
 
     outcomes = await asyncio.gather(
-        *(naive.book(session_factory, r, ledger=Booking) for r in requests), return_exceptions=True
+        *(naive.book(deps, r, ledger=Booking) for r in requests), return_exceptions=True
     )
 
     successes = [o for o in outcomes if not isinstance(o, Exception)]

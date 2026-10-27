@@ -24,6 +24,7 @@ from redis.asyncio import Redis
 from app.auth import create_access_token
 from app.config import Settings
 from app.main import create_app
+from app.strategies.common import StrategyDeps
 from scripts.seed import seat_rows
 
 TEST_DATABASE_URL = os.getenv(
@@ -134,3 +135,9 @@ async def client_factory(db, redis_client):
 @pytest.fixture
 async def client(client_factory) -> AsyncClient:
     return await client_factory()
+
+
+def deps_for(client: AsyncClient) -> StrategyDeps:
+    """The strategy dependencies of the app behind a test client."""
+    state = client._transport.app.state
+    return StrategyDeps(session_factory=state.session_factory, redis=state.redis, settings=state.settings)
