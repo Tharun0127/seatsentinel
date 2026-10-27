@@ -7,7 +7,7 @@ from redis.asyncio import Redis
 
 from app.config import Settings, get_settings
 from app.db import build_engine, build_session_factory
-from app.routers import auth, events
+from app.routers import auth, booking, events
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -29,6 +29,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="SeatSentinel", lifespan=lifespan)
     app.include_router(auth.router)
     app.include_router(events.router)
+    app.include_router(booking.router)
 
     @app.get("/health")
     async def health() -> dict:

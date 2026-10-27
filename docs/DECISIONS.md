@@ -18,6 +18,16 @@ Every important choice in SeatSentinel, the alternatives, and why.
 ### `version` column on seats
 - Used only by the optimistic strategy. Kept on every seat so all strategies operate on the same schema and can be compared fairly.
 
+## The naive (broken) endpoint
+
+### Kept in the code, clearly marked, with its own ledger table
+- `POST /book` with `strategy=naive` does check-then-act with no locking (`app/strategies/naive.py`).
+- It writes to `naive_bookings`, a copy of `bookings` **without** the unique constraint. If it wrote to the real table, Postgres would reject the duplicates and the race would show up as errors instead of as many happy customers holding the same seat. The separate table makes the bug visible and countable.
+- A second test runs the same naive code against the real `bookings` table and shows the unique constraint letting exactly one through. That is the "last line of defence" story in one test.
+
+### Warm the connection pool before racing
+- With a cold pool, most of the 200 requests spend their time opening connections and reach Postgres one after another, so the race barely shows (3 winners). After warming the pool, 20 of 200 users get the seat on every run (one per pooled connection), which is what a long-running server would see. Real traffic would be worse, not better.
+
 ## Auth
 
 - **bcrypt (cost 12) run in a thread:** bcrypt is CPU-heavy on purpose; `asyncio.to_thread` keeps the event loop responsive. Tests use cost 4 and create users directly in SQL, because 200 signups at cost 12 would take about a minute.

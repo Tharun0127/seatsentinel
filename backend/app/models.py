@@ -74,3 +74,18 @@ class Booking(Base):
     seat_id: Mapped[int] = mapped_column(ForeignKey("seats.id"), unique=True)
     strategy: Mapped[str] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class NaiveBooking(Base):
+    """BROKEN-DEMO ledger: same shape as Booking but with NO unique constraint
+    on seat_id, so the naive endpoint's double bookings become visible rows."""
+
+    __tablename__ = "naive_bookings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reference: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"))
+    seat_id: Mapped[int] = mapped_column(ForeignKey("seats.id"), index=True)
+    strategy: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
