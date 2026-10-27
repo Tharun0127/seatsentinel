@@ -58,5 +58,13 @@ services:
       retries: 20
       start_period: 60s
 
+  frontend:
+    build: ./frontend
+    container_name: seatsentinel-frontend
+    ports:
+      - "5172:80"
+    depends_on:
+      - api
+
 volumes:
   pgdata:

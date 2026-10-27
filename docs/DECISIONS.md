@@ -88,6 +88,15 @@ The payment row is a small state machine (`charged → confirming → confirmed 
 - **Scoped per user and endpoint** so users cannot collide (or probe each other's keys).
 - **No key expiry** in this project. Production would delete records after e.g. 24 h.
 
+## Frontend
+
+- **Polling every 2 s, no WebSockets** (spec): keeps the focus on server-side concurrency. Two browsers side by side show each other's holds within 2 s.
+- **Countdown from server time-left, not a client clock:** the seat map returns `hold_expires_in_ms`; the page computes a local deadline at fetch time. Clock skew between browser and server cannot make the timer lie by minutes.
+- **Losing a seat is explained, not silent:** if a seat you selected turns held/booked in the next poll, it is deselected and a banner says "Someone else just grabbed A5". A 409 from the hold endpoint shows the server's message.
+- **Idempotency keys created once per checkout (`useRef`) and reused on retry**, so double-clicking Pay or retrying after a network error cannot double charge. `crypto.randomUUID` with a fallback for non-secure origins.
+- **JWT in localStorage:** simplest for a demo. Production would prefer an httpOnly cookie to reduce XSS token theft.
+- **nginx serves the build and proxies `/api`**: one origin, no CORS.
+
 ## Auth
 
 - **bcrypt (cost 12) run in a thread:** bcrypt is CPU-heavy on purpose; `asyncio.to_thread` keeps the event loop responsive. Tests use cost 4 and create users directly in SQL, because 200 signups at cost 12 would take about a minute.
