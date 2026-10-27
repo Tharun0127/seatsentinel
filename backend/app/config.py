@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     bcrypt_rounds: int = 12
 
     # Seat holds live in Redis and expire on their own (spec: 5 minutes).
-    hold_ttl_seconds: int = 300
+    # A float so tests can use a fraction of a second.
+    hold_ttl_seconds: float = 300
 
     # Pessimistic locking: give up (409) instead of waiting forever on a row lock.
     pessimistic_lock_timeout_ms: int = 5000

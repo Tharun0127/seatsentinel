@@ -28,6 +28,15 @@ def create_access_token(settings: Settings, user_id: int) -> str:
     return jwt.encode({"sub": str(user_id), "exp": expires}, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+def optional_user_id(
+    request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)
+) -> int | None:
+    """Like current_user_id, but anonymous visitors get None instead of 401."""
+    if credentials is None:
+        return None
+    return current_user_id(request, credentials)
+
+
 def current_user_id(
     request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)
 ) -> int:

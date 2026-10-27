@@ -59,6 +59,35 @@ Every important choice in SeatSentinel, the alternatives, and why.
 - **Why not Redlock (multi-node):** one Redis instance; Redlock adds complexity and has well-known debates about its safety under clock drift. The DB constraint is our real guarantee.
 - **When it makes sense:** when the resource is not a single database row (e.g. an external ticketing API, or seats sharded across databases), or when you want to keep lock waits out of Postgres entirely.
 
+## Holds
+
+- **Redis key per seat with a TTL** (`hold:seat:<id>` = user id, `PX` = 5 min). Expiry is exact and needs no cleanup job.
+- **All-or-nothing multi-seat hold in one Lua script:** checks every seat, then sets every seat. Two users selecting overlapping seats can never each end up with half. Re-holding your own seat refreshes its timer.
+- **Holds are advisory; bookings are authoritative.** A hold improves UX ("this seat is yours for 5 minutes") but correctness still comes from the booking strategy plus `UNIQUE(seat_id)`. `POST /book` checks holds before booking, but that check is itself check-then-act, which is fine because the strategy behind it is safe.
+- **Seat map = Postgres (booked) merged with Redis (held).** Booked wins over held. The hold's remaining time is only shown to its owner (for the countdown); others just see "held".
+- **Alternative:** a `held_until` column in Postgres. Rejected: needs a sweeper job or every query to compare timestamps, and more write load on the hottest rows.
+
+## Payment that succeeds just after the hold expired
+
+`checkout.secure_holds` handles it at confirm time:
+1. Seat still held by me: continue.
+2. Hold expired and **nobody else took the seat**: re-hold it atomically and continue. The customer paid; we do not punish them for a few seconds. The response says `late_hold_recovered: true`.
+3. Hold expired and **someone else holds it now**, or it was booked: mark the payment `refunded` and return 409 with a clear message.
+
+The payment row is a small state machine (`charged → confirming → confirmed | refunded`). Each transition is a compare-and-set `UPDATE ... WHERE status = 'charged'`, so two confirms for one payment (even with different idempotency keys) can never both proceed. A crash between `confirming` and the final status would leave the payment stuck; in production a reconciliation job would refund or complete those. Out of scope here, so documented instead.
+
+## Idempotency
+
+- **Required `Idempotency-Key` header** on `POST /payments` and `POST /bookings/confirm` (400 without it).
+- **Stored in Postgres, not Redis:** these records protect money, so they must be durable and live as long as the payment.
+- **Atomic claim:** `INSERT ... ON CONFLICT DO NOTHING` on primary key `(user_id, endpoint, key)`. Of 20 simultaneous retries, exactly one inserts and does the work.
+- **Replay the original response, including failures.** A 409 "refunded" is stored and replayed; otherwise a retry could re-run the work and get a different answer.
+- **In-flight duplicates get 409 "still being processed"** (as Stripe does), not a blocking wait.
+- **Same key, different body → 422.** Hash of the canonical JSON body is stored with the key.
+- **Unexpected exceptions (500) delete the key** so the client can safely retry; expected outcomes are kept.
+- **Scoped per user and endpoint** so users cannot collide (or probe each other's keys).
+- **No key expiry** in this project. Production would delete records after e.g. 24 h.
+
 ## Auth
 
 - **bcrypt (cost 12) run in a thread:** bcrypt is CPU-heavy on purpose; `asyncio.to_thread` keeps the event loop responsive. Tests use cost 4 and create users directly in SQL, because 200 signups at cost 12 would take about a minute.

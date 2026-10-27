@@ -10,7 +10,7 @@ from decimal import Decimal
 from sqlalchemy import (
     CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 SEAT_AVAILABLE = "available"
@@ -73,6 +73,40 @@ class Booking(Base):
     # application had a bug, Postgres refuses a second booking for a seat.
     seat_id: Mapped[int] = mapped_column(ForeignKey("seats.id"), unique=True)
     strategy: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Payment(Base):
+    """A mock card charge.
+
+    Status moves charged -> confirming -> confirmed, or -> refunded when the
+    seats could not be booked. Each move is a compare-and-set UPDATE, so two
+    confirm requests can never both use the same payment.
+    """
+
+    __tablename__ = "payments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"))
+    seat_ids: Mapped[list[int]] = mapped_column(ARRAY(Integer))
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    status: Mapped[str] = mapped_column(String(16))
+    booking_reference: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IdempotencyKey(Base):
+    __tablename__ = "idempotency_keys"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    endpoint: Mapped[str] = mapped_column(String(64), primary_key=True)
+    key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16))  # in_progress | completed
+    response_status: Mapped[int | None]
+    response_body: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
