@@ -49,6 +49,16 @@ Every important choice in SeatSentinel, the alternatives, and why.
 - **Honest note:** in this schema, a version change almost always means "someone booked it", so most conflicts end after one re-read with "already booked". Retries pay off when rows change for other reasons (a price edit, a cancellation). The tests simulate that by bumping the version between read and write.
 - **Why `status = 'available'` is also in the WHERE:** belt and braces; even if versions were mishandled, an UPDATE can never flip a booked seat.
 
+## Redis distributed lock
+
+- `SET lock:seat:<id> <random token> NX PX 5000` per seat, in sorted order; if any seat is already locked, release what we took and fail with 409 at once.
+- **Release with a Lua compare-and-delete**, not `DEL`: a stalled worker whose lock expired must not delete the next owner's lock. GET-then-DEL from Python would be another check-then-act race; Lua runs atomically inside Redis. Tested by letting a lock expire, giving it to a new owner, then releasing with the old token.
+- **PX (auto-expiry)** so a crashed worker cannot block a seat forever. The TTL (5 s) must exceed the slowest booking transaction.
+- **Fail fast instead of waiting:** a seat is a single item; if someone is buying it right now, telling the user immediately is better than queueing them behind a probable "already booked".
+- **Fencing:** if a transaction outlives its lock, another worker could enter the critical section. Real fencing tokens need the storage to reject stale tokens; here the `UNIQUE (seat_id)` constraint plays that role, and the `IntegrityError` becomes a 409.
+- **Why not Redlock (multi-node):** one Redis instance; Redlock adds complexity and has well-known debates about its safety under clock drift. The DB constraint is our real guarantee.
+- **When it makes sense:** when the resource is not a single database row (e.g. an external ticketing API, or seats sharded across databases), or when you want to keep lock waits out of Postgres entirely.
+
 ## Auth
 
 - **bcrypt (cost 12) run in a thread:** bcrypt is CPU-heavy on purpose; `asyncio.to_thread` keeps the event loop responsive. Tests use cost 4 and create users directly in SQL, because 200 signups at cost 12 would take about a minute.

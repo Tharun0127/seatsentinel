@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.auth import current_user_id
-from app.strategies import naive, optimistic, pessimistic
+from app.strategies import naive, optimistic, pessimistic, redis_lock
 from app.strategies.common import BookingError, BookingRequest, StrategyDeps
 
 router = APIRouter(tags=["booking"])
@@ -18,8 +18,9 @@ STRATEGIES = {
     naive.NAME: naive.book,  # BROKEN demo, see app/strategies/naive.py
     pessimistic.NAME: pessimistic.book,
     optimistic.NAME: optimistic.book,
+    redis_lock.NAME: redis_lock.book,
 }
-StrategyName = Literal["naive", "pessimistic", "optimistic"]
+StrategyName = Literal["naive", "pessimistic", "optimistic", "redis"]
 
 
 class BookBody(BaseModel):

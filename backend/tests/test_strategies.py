@@ -11,7 +11,7 @@ from app.strategies import optimistic
 from tests.concurrency import race_for_seat
 from tests.conftest import EVENT_ID, HOT_SEAT_ID
 
-CORRECT_STRATEGIES = ["pessimistic", "optimistic"]
+CORRECT_STRATEGIES = ["pessimistic", "optimistic", "redis"]
 
 
 @pytest.mark.parametrize("strategy", CORRECT_STRATEGIES)
