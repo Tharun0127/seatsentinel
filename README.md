@@ -6,6 +6,16 @@ proves it double-books), three correct strategies (pessimistic, optimistic,
 Redis lock) that each pass a 200-requests-for-one-seat test, seat holds with
 a TTL, idempotent payments, and the database constraint underneath it all.
 
+## What this project demonstrates
+
+- **I can reproduce a race condition, not just describe one.** The naive endpoint is kept on purpose. Its test fires 200 concurrent requests at one seat, and 20 users are told they got it.
+- **Three correct fixes, compared side by side:** pessimistic (`SELECT ... FOR UPDATE` with lock ordering and `lock_timeout`), optimistic (version column with bounded, jittered retries), and a Redis distributed lock (`SET NX PX` with a Lua owner-only release). Each gives exactly 1 × 201 and 199 × 409, and none ever returns a 500.
+- **Defence in depth.** `UNIQUE (seat_id)` catches what application logic misses, and a test runs the broken code against the real table to prove it.
+- **Real-world edge cases:** 5-minute holds in Redis that expire on their own; a payment that succeeds just after its hold expired (re-held if the seat is free, refunded if not); idempotency keys so 20 simultaneous retries charge exactly once.
+- **Database fundamentals:** a runnable demo of READ COMMITTED (lost update) vs SERIALIZABLE (`40001`), and why I chose READ COMMITTED.
+- **Load-tested:** throughput, p95 and double-booking counts per strategy, median of 3 runs, with contended and no-contention scenarios.
+- **52 tests** against real Postgres and Redis, plus `DECISIONS.md` and `INTERVIEW.md`.
+
 ## Results
 
 | Strategy | 200 users, 1 seat: winners | Double-booked under load | Throughput (contended) | p95 | When to use |
