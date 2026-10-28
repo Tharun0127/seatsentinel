@@ -97,6 +97,18 @@ The payment row is a small state machine (`charged → confirming → confirmed 
 - **JWT in localStorage:** simplest for a demo. Production would prefer an httpOnly cookie to reduce XSS token theft.
 - **nginx serves the build and proxies `/api`**: one origin, no CORS.
 
+## Transaction isolation
+
+- **READ COMMITTED (Postgres default) everywhere.** Each strategy makes the read-then-write race impossible at that level (row lock, conditional UPDATE, Redis lock), and the unique constraint backs them all. SERIALIZABLE would also prevent the race, but forces a retry loop on every caller and aborts many transactions during an on-sale. The demo and reasoning are in [ISOLATION.md](ISOLATION.md).
+
+## Load test
+
+- **Custom asyncio + httpx script instead of Locust or k6.** Each strategy needs a freshly reset seat map, exact counts of 201/409/5xx, and a database check for double bookings afterwards. A ~200-line script does that directly; Locust would need the same reset and verification code around it.
+- **Temporary 1,000-seat "benchmark arena" event** created and deleted by the script, so benchmarking never wipes real bookings.
+- **Two modes:** *contended* (half the demand on 100 front seats) and *distinct* (every request a different seat), because "which strategy is fastest" depends entirely on contention.
+- **Median of 3 runs**, while correctness columns report the *worst* run: one double booking in any run is a failure.
+- **Client keep-alive expiry (2 s) below uvicorn's (5 s):** one run showed two client-side errors that never reached the API. That is the classic race of reusing a connection the server is closing at that moment. After the change, 6 runs had zero errors.
+
 ## Auth
 
 - **bcrypt (cost 12) run in a thread:** bcrypt is CPU-heavy on purpose; `asyncio.to_thread` keeps the event loop responsive. Tests use cost 4 and create users directly in SQL, because 200 signups at cost 12 would take about a minute.
