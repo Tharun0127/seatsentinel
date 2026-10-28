@@ -29,6 +29,17 @@ Median of 3 runs, 2,000 bookings, 50 concurrent users, 0 server errors for
 every strategy. No-contention numbers, method and caveats:
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
+
+## Screenshots
+
+| Seat map: free, held (yours / someone else's), booked, your booking, hold countdown | Events | My bookings |
+|---|---|---|
+| ![Seat map](docs/screenshots/seat-map.png) | ![Events](docs/screenshots/events.png) | ![My bookings](docs/screenshots/my-bookings.png) |
+
+| Mock payment (idempotency keys are created once per checkout and reused on retry) |
+|---|
+| ![Checkout](docs/screenshots/checkout.png) |
+
 ## The race condition
 
 ```mermaid
